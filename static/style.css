@@ -1,0 +1,50 @@
+/* Custom scrollbar for a cleaner look */
+::-webkit-scrollbar {
+    width: 6px;
+}
+::-webkit-scrollbar-track {
+    background: #111827; /* bg-gray-900 */
+}
+::-webkit-scrollbar-thumb {
+    background: #4b5563; /* bg-gray-600 */
+    border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+    background: #6b7280; /* bg-gray-500 */
+}
+
+/* The chat background image */
+.chat-bg {
+    background-image: url('https://i.pinimg.com/736x/8c/98/99/8c98994518b575bfd8c949e91d20548b.jpg');
+    background-position: center;
+    background-size: cover;
+}
+
+/* Ensure full height for layout */
+html, body {
+    height: 100%;
+    overflow: hidden;
+}
+
+/* Remove default centering for the body once chat is active */
+body.chat-active {
+    align-items: initial;
+    justify-content: initial;
+}
+
+/* Video call styles */
+#local-video {
+    position: absolute;
+    bottom: 1rem;
+    right: 1rem;
+    width: 25%;
+    max-width: 200px;
+    border-radius: 0.5rem;
+    border: 2px solid white;
+    transform: scaleX(-1); /* Mirror view */
+}
+#remote-video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transform: scaleX(-1); /* Mirror view */
