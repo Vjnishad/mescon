@@ -111,7 +111,6 @@ pyttsx3==2.99
 pytweening==1.2.0
 pytz==2025.2
 pywhatkit==5.4
-pywin32==310
 PyYAML==6.0.2
 redis==6.4.0
 referencing==0.36.2
