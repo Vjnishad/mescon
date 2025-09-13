@@ -1,5 +1,10 @@
 document.addEventListener('DOMContentLoaded', () => {
 
+    // --- HOST CONFIGURATION ---
+    // IMPORTANT: Replace this with your public ngrok URL
+    // Make sure to use the part WITHOUT "https://", like "unique-string.ngrok-free.app"
+   const HOST = '09dbc747cb8f.ngrok-free.app';
+
     // --- DOM ELEMENT REFERENCES --- //
     const body = document.body;
     const loginSection = document.getElementById('login-section');
@@ -35,11 +40,25 @@ document.addEventListener('DOMContentLoaded', () => {
     const profileNumberP = document.getElementById('profile-number');
     const profileNameInput = document.getElementById('profile-name');
     const profileAvatarInput = document.getElementById('profile-avatar');
-    // Video Call Elements
+    // Call Elements
     const callScreen = document.getElementById('call-screen');
+    const callDragHandle = document.getElementById('call-drag-handle');
+    const videoCallContainer = document.getElementById('video-call-container');
+    const voiceCallContainer = document.getElementById('voice-call-container');
     const localVideo = document.getElementById('local-video');
     const remoteVideo = document.getElementById('remote-video');
     const hangUpBtn = document.getElementById('hang-up-btn');
+    const voiceCallAvatar = document.getElementById('voice-call-avatar');
+    const voiceCallName = document.getElementById('voice-call-name');
+    const voiceCallStatus = document.getElementById('voice-call-status');
+    const incomingCallModal = document.getElementById('incoming-call-modal');
+    const callerAvatar = document.getElementById('caller-avatar');
+    const callerName = document.getElementById('caller-name');
+    const callTypeText = document.getElementById('call-type-text');
+    const acceptCallBtn = document.getElementById('accept-call-btn');
+    const declineCallBtn = document.getElementById('decline-call-btn');
+    const minimizeCallBtn = document.getElementById('minimize-call-btn');
+    const maximizeCallBtn = document.getElementById('maximize-call-btn');
 
     // --- APP STATE --- //
     let websocket;
@@ -51,6 +70,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let peerConnection;
     let localStream;
     let remoteStream;
+    let incomingCallData = null;
     const iceServers = {
         iceServers: [
             { urls: 'stun:stun.l.google.com:19302' },
@@ -63,7 +83,7 @@ document.addEventListener('DOMContentLoaded', () => {
         event.preventDefault();
         const mobile = mobileInput.value;
         try {
-            const response = await fetch('http://localhost:8000/auth/send-otp', {
+            const response = await fetch(`https://${HOST}/auth/send-otp`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ mobile: mobile })
@@ -85,7 +105,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const mobile = mobileForVerifySpan.textContent;
         const otp = otpInput.value;
         try {
-            const response = await fetch('http://localhost:8000/auth/verify-otp', {
+            const response = await fetch(`https://${HOST}/auth/verify-otp`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ mobile: mobile, otp: otp })
@@ -117,7 +137,7 @@ document.addEventListener('DOMContentLoaded', () => {
             showNotification('Authentication token not found. Please log in again.', true);
             return;
         }
-        websocket = new WebSocket(`ws://localhost:8000/chat/ws?token=${token}`);
+        websocket = new WebSocket(`wss://${HOST}/chat/ws?token=${token}`);
         websocket.onopen = () => {
             console.log('WebSocket connection established.');
             displaySystemMessage('You are now connected.');
@@ -140,6 +160,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 case 'call_ended':
                     endCall(false);
                     break;
+                case 'call_declined':
+                    showNotification("Call declined.");
+                    endCall(false);
+                    break;
             }
         };
         websocket.onclose = () => {
@@ -155,16 +179,22 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function handleChatMessage(msgData) {
         console.log('Message from server:', msgData);
-        const contactId = msgData.sender_id;
+        const myNumber = jwt_decode(localStorage.getItem('access_token')).sub;
+        const contactId = msgData.sender_id === myNumber ? msgData.recipient_id : msgData.sender_id;
+
         if (!allMessages[contactId]) {
             allMessages[contactId] = { messages: [], unread: 0 };
         }
+
+        const senderType = msgData.sender_id === myNumber ? 'me' : 'them';
+
         allMessages[contactId].messages.push({
             text: msgData.text,
-            sender: 'them',
+            sender: senderType,
             timestamp: msgData.timestamp
         });
-        if (contactId !== activeChatId) {
+
+        if (senderType === 'them' && contactId !== activeChatId) {
             allMessages[contactId].unread++;
         }
         if (contactId === activeChatId) {
@@ -172,6 +202,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         renderChatList();
     }
+
 
     // --- EVENT LISTENERS & UI LOGIC --- //
     function setupEventListeners() {
@@ -181,15 +212,6 @@ document.addEventListener('DOMContentLoaded', () => {
             if (websocket && text && activeChatId) {
                 const messagePayload = JSON.stringify({ type: 'chat_message', recipient_id: activeChatId, text: text });
                 websocket.send(messagePayload);
-                const newMessage = {
-                    text,
-                    sender: 'me',
-                    timestamp: new Date().toISOString()
-                };
-                if (!allMessages[activeChatId]) allMessages[activeChatId] = { messages: [], unread: 0 };
-                allMessages[activeChatId].messages.push(newMessage);
-                renderMessages(activeChatId);
-                renderChatList();
                 messageInput.value = '';
                 updateSendButtonIcon();
                 messageInput.focus();
@@ -215,9 +237,45 @@ document.addEventListener('DOMContentLoaded', () => {
         chatHeader.addEventListener('click', (e) => {
             if (e.target.closest('#edit-contact-btn')) openContactModalForEdit();
             if (e.target.closest('#delete-contact-btn')) handleDeleteContact();
-            if (e.target.closest('#video-call-btn')) startCall();
+            if (e.target.closest('#video-call-btn')) startCall(true); // isVideo = true
+            if (e.target.closest('#voice-call-btn')) startCall(false); // isVideo = false
         });
         hangUpBtn.addEventListener('click', () => endCall(true));
+        acceptCallBtn.addEventListener('click', handleAcceptCall);
+        declineCallBtn.addEventListener('click', handleDeclineCall);
+
+        // Call Window Controls
+        minimizeCallBtn.addEventListener('click', () => {
+            callScreen.classList.toggle('minimized');
+        });
+        maximizeCallBtn.addEventListener('click', () => {
+            callScreen.classList.toggle('maximized');
+            if(callScreen.classList.contains('maximized')) {
+                callScreen.style.top = '50%';
+                callScreen.style.left = '50%';
+            }
+            callDragHandle.style.cursor = callScreen.classList.contains('maximized') ? 'default' : 'move';
+        });
+
+        // Draggable Call Window Logic
+        let isDragging = false;
+        let offsetX, offsetY;
+        callDragHandle.addEventListener('mousedown', (e) => {
+            if (callScreen.classList.contains('maximized')) return;
+            isDragging = true;
+            offsetX = e.clientX - callScreen.offsetLeft;
+            offsetY = e.clientY - callScreen.offsetTop;
+            callDragHandle.style.cursor = 'grabbing';
+        });
+        document.addEventListener('mousemove', (e) => {
+            if (!isDragging) return;
+            callScreen.style.left = `${e.clientX - offsetX}px`;
+            callScreen.style.top = `${e.clientY - offsetY}px`;
+        });
+        document.addEventListener('mouseup', () => {
+            isDragging = false;
+            callDragHandle.style.cursor = 'move';
+        });
     }
 
     // --- MODAL & CONTACTS LOGIC ---
@@ -243,7 +301,7 @@ document.addEventListener('DOMContentLoaded', () => {
     async function openProfileModal() {
         const token = localStorage.getItem('access_token');
         try {
-            const response = await fetch('http://localhost:8000/api/profile', {
+            const response = await fetch(`https://${HOST}/api/profile`, {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
             if (!response.ok) throw new Error('Failed to fetch profile.');
@@ -264,7 +322,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const avatar = profileAvatarInput.value;
         const token = localStorage.getItem('access_token');
         try {
-            const response = await fetch('http://localhost:8000/api/profile', {
+            const response = await fetch(`https://${HOST}/api/profile`, {
                 method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json',
@@ -288,7 +346,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const number = contactNumberInput.value;
         const name = contactNameInput.value;
         const token = localStorage.getItem('access_token');
-        const url = isEditingContact ? `http://localhost:8000/api/contacts/${number}` : 'http://localhost:8000/api/contacts';
+        const url = isEditingContact ? `https://${HOST}/api/contacts/${number}` : `https://${HOST}/api/contacts`;
         const method = isEditingContact ? 'PUT' : 'POST';
 
         try {
@@ -320,7 +378,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!activeChatId || !confirm(`Are you sure you want to delete this contact?`)) return;
         const token = localStorage.getItem('access_token');
         try {
-            const response = await fetch(`http://localhost:8000/api/contacts/${activeChatId}`, {
+            const response = await fetch(`https://${HOST}/api/contacts/${activeChatId}`, {
                 method: 'DELETE',
                 headers: { 'Authorization': `Bearer ${token}` }
             });
@@ -397,6 +455,7 @@ document.addEventListener('DOMContentLoaded', () => {
             <img src="${contact.avatar}" alt="${contact.name}" class="w-10 h-10 rounded-full mr-4">
             <div class="flex-1"><h3 class="text-lg font-semibold text-white">${contact.name}</h3><p class="text-sm text-gray-400">${contact.online ? 'Online' : 'Offline'}</p></div>
             <div class="flex items-center space-x-4">
+                <button id="voice-call-btn" title="Voice Call" class="text-gray-400 hover:text-white"><i class="fa-solid fa-phone"></i></button>
                 <button id="video-call-btn" title="Video Call" class="text-gray-400 hover:text-white"><i class="fa-solid fa-video"></i></button>
                 <button id="edit-contact-btn" title="Edit Contact" class="text-gray-400 hover:text-white"><i class="fa-solid fa-pen-to-square"></i></button>
                 <button id="delete-contact-btn" title="Delete Contact" class="text-gray-400 hover:text-white"><i class="fa-solid fa-trash"></i></button>
@@ -436,9 +495,11 @@ document.addEventListener('DOMContentLoaded', () => {
         remoteStream = new MediaStream();
         remoteVideo.srcObject = remoteStream;
 
-        localStream.getTracks().forEach(track => {
-            peerConnection.addTrack(track, localStream);
-        });
+        if (localStream) {
+            localStream.getTracks().forEach(track => {
+                peerConnection.addTrack(track, localStream);
+            });
+        }
 
         peerConnection.ontrack = event => {
             event.streams[0].getTracks().forEach(track => {
@@ -457,10 +518,16 @@ document.addEventListener('DOMContentLoaded', () => {
         };
     }
 
-    async function startCall() {
+    async function startCall(isVideo) {
+        const constraints = { video: isVideo, audio: true };
         try {
-            localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-            localVideo.srcObject = localStream;
+            localStream = await navigator.mediaDevices.getUserMedia(constraints);
+            if (isVideo) {
+                localVideo.srcObject = localStream;
+            }
+
+            const contact = contacts.find(c => c.id === activeChatId);
+            showCallUI(isVideo, contact, true);
 
             await createPeerConnection();
 
@@ -470,9 +537,9 @@ document.addEventListener('DOMContentLoaded', () => {
             websocket.send(JSON.stringify({
                 type: 'webrtc_offer',
                 recipient_id: activeChatId,
-                offer: offer
+                offer: offer,
+                callType: isVideo ? 'video' : 'voice'
             }));
-            callScreen.classList.remove('hidden');
         } catch (error) {
             console.error("Error starting call:", error);
             showNotification("Could not start call. Check camera/mic permissions.", true);
@@ -480,17 +547,36 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    async function handleOffer(data) {
-        const contact = contacts.find(c => c.id === data.sender_id);
-        if (!contact || !confirm(`${contact.name} is calling you. Answer?`)) {
+    function handleOffer(data) {
+        if (peerConnection) {
+            console.log("Ignoring new call offer while already in a call.");
             return;
         }
+        const contact = contacts.find(c => c.id === data.sender_id);
+        if (!contact) return;
+
+        incomingCallData = data;
+        callerAvatar.src = contact.avatar;
+        callerName.textContent = contact.name;
+        callTypeText.textContent = `Incoming ${data.callType} call...`;
+        incomingCallModal.classList.remove('hidden');
+    }
+
+    async function handleAcceptCall() {
+        if (!incomingCallData) return;
+        const data = incomingCallData;
+        const callType = data.callType || 'video';
+        const constraints = { video: (callType === 'video'), audio: true };
 
         try {
-            localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-            localVideo.srcObject = localStream;
+            localStream = await navigator.mediaDevices.getUserMedia(constraints);
+            if (callType === 'video') {
+                localVideo.srcObject = localStream;
+            }
 
             handleSelectChat(data.sender_id);
+            const contact = contacts.find(c => c.id === data.sender_id);
+            showCallUI(callType === 'video', contact, false);
 
             await createPeerConnection();
             await peerConnection.setRemoteDescription(new RTCSessionDescription(data.offer));
@@ -503,17 +589,30 @@ document.addEventListener('DOMContentLoaded', () => {
                 recipient_id: data.sender_id,
                 answer: answer
             }));
-            callScreen.classList.remove('hidden');
         } catch (error) {
              console.error("Error answering call:", error);
              showNotification("Could not answer call. Check camera/mic permissions.", true);
              endCall(false);
+        } finally {
+            incomingCallModal.classList.add('hidden');
+            incomingCallData = null;
         }
+    }
+
+    function handleDeclineCall() {
+        if (!incomingCallData) return;
+        websocket.send(JSON.stringify({
+            type: 'call_declined',
+            recipient_id: incomingCallData.sender_id
+        }));
+        incomingCallModal.classList.add('hidden');
+        incomingCallData = null;
     }
 
     async function handleAnswer(data) {
         if (peerConnection) {
             await peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
+            voiceCallStatus.textContent = "In call...";
         }
     }
 
@@ -521,6 +620,21 @@ document.addEventListener('DOMContentLoaded', () => {
         if (peerConnection && data.candidate) {
             await peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
         }
+    }
+
+    function showCallUI(isVideo, contact, isOutgoing = false) {
+        if (isVideo) {
+            videoCallContainer.classList.remove('hidden');
+            voiceCallContainer.classList.add('hidden');
+        } else {
+            voiceCallContainer.classList.remove('hidden');
+            videoCallContainer.classList.add('hidden');
+            voiceCallAvatar.src = contact.avatar;
+            voiceCallName.textContent = contact.name;
+            voiceCallStatus.textContent = isOutgoing ? "Ringing..." : "In call...";
+        }
+        callScreen.classList.remove('hidden', 'minimized', 'maximized');
+        callScreen.classList.add('flex');
     }
 
     function endCall(notifyPeer) {
@@ -541,6 +655,7 @@ document.addEventListener('DOMContentLoaded', () => {
         localVideo.srcObject = null;
         remoteVideo.srcObject = null;
         callScreen.classList.add('hidden');
+        callScreen.classList.remove('flex');
     }
 
     // --- UTILITY FUNCTIONS ---
@@ -610,24 +725,33 @@ document.addEventListener('DOMContentLoaded', () => {
         return isShort ? date.toLocaleDateString() : date.toLocaleDateString();
     }
 
+    // A simple function to decode JWTs without an external library
+    function jwt_decode(token) {
+        try {
+            return JSON.parse(atob(token.split('.')[1]));
+        } catch (e) {
+            return null;
+        }
+    }
+
     async function loadInitialData() {
         const token = localStorage.getItem('access_token');
         if (!token) return;
         try {
-            const usersResponse = await fetch('http://localhost:8000/api/users', {
+            const usersResponse = await fetch(`https://${HOST}/api/users`, {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
             if (!usersResponse.ok) throw new Error('Failed to fetch user list.');
             contacts = await usersResponse.json();
 
-            const profileResponse = await fetch('http://localhost:8000/api/profile', {
+            const profileResponse = await fetch(`https://${HOST}/api/profile`, {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
              if (!profileResponse.ok) throw new Error('Failed to fetch profile.');
             const profile = await profileResponse.json();
             myAvatarImg.src = profile.avatar;
 
-            const historyResponse = await fetch('http://localhost:8000/chat/history', {
+            const historyResponse = await fetch(`https://${HOST}/chat/history`, {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
             if (!historyResponse.ok) throw new Error('Failed to fetch chat history.');
@@ -646,3 +770,4 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 });
+

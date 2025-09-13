@@ -3,22 +3,36 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from dotenv import load_dotenv
+from contextlib import asynccontextmanager
 
-# Import all your routers
+# Import all your routers and the function to create tables
 from auth import router as auth_router
 from chat import router as chat_router
 from user_management import router as users_router
-from profile import router as profile_router # <-- THIS LINE IS ADDED
+from profile import router as profile_router
+from models import create_db_and_tables
+
+# --- THIS IS THE NEW, MODERN WAY ---
+# This is a lifespan event handler. The code inside "yield" runs on startup.
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    print("--- Server Starting Up ---")
+    # This will create the database tables if they don't exist
+    create_db_and_tables()
+    print("--- Database Tables Verified ---")
+    yield
+    print("--- Server Shutting Down ---")
+
 
 load_dotenv()
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 app = FastAPI(
-    title="Chatters App Backend",
-    description="Backend API with OTP login & WebSocket chat",
-    version="1.0.0"
+    lifespan=lifespan, # The new way to handle startup events
+    title="Mescon App Backend",
+    description="Backend with PostgreSQL, OTP login & WebSocket chat",
+    version="2.0.0"
 )
 
-# --- Middleware ---
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -27,18 +41,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# --- API Routes ---
 app.include_router(auth_router, prefix="/auth", tags=["Authentication"])
 app.include_router(chat_router, prefix="/chat", tags=["Chat"])
 app.include_router(users_router, prefix="/api", tags=["Users"])
-app.include_router(profile_router, prefix="/api", tags=["Profile"]) # <-- THIS LINE IS ADDED
+app.include_router(profile_router, prefix="/api", tags=["Profile"])
 
-# --- Static Files Mount ---
-# This serves your frontend files from the "static" folder.
-# It must be placed AFTER all your API routes.
 app.mount("/", StaticFiles(directory=os.path.join(BASE_DIR, "static"), html=True), name="static")
 
-# --- Uvicorn Runner ---
 if __name__ == "__main__":
     import uvicorn
     port = int(os.getenv("PORT", 8000))
@@ -48,4 +57,3 @@ if __name__ == "__main__":
         port=port,
         reload=True
     )
-

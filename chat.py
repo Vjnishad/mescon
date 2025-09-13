@@ -1,51 +1,26 @@
-import jwt
 import json
-import os
-import datetime
-from fastapi import APIRouter, WebSocket, Depends, Query, HTTPException, status, Header
+from datetime import datetime
+import pytz
+from fastapi import APIRouter, WebSocket, Depends, Query
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, insert, or_
 from typing import Dict, List
-import pytz  # Import the pytz library for timezone handling
 
-# Import the dependency from our central file
 from dependencies import get_user_from_token, get_current_user_http
+from database import get_db_session
+from models import Message
 
-# --- Configuration ---
-MESSAGES_FILE = "messages.json"
-# --- THIS IS THE FIX: Define your local timezone ---
+# Set the timezone to India Standard Time
 IST = pytz.timezone('Asia/Kolkata')
 
-
-# --- Helper Functions for Database (JSON file) ---
-
-def load_messages() -> Dict[str, List[Dict]]:
-    """Loads all messages from the JSON file."""
-    if not os.path.exists(MESSAGES_FILE):
-        return {}
-    with open(MESSAGES_FILE, "r") as f:
-        try:
-            return json.load(f)
-        except json.JSONDecodeError:
-            return {}
+router = APIRouter()
 
 
-def save_message(sender_id: str, recipient_id: str, text: str, timestamp: str):
-    """Saves a single message to the JSON file with a timestamp."""
-    all_messages = load_messages()
-    convo_key = "-".join(sorted([sender_id, recipient_id]))
-
-    if convo_key not in all_messages:
-        all_messages[convo_key] = []
-
-    new_message = {"sender": sender_id, "text": text, "timestamp": timestamp}
-    all_messages[convo_key].append(new_message)
-
-    with open(MESSAGES_FILE, "w") as f:
-        json.dump(all_messages, f, indent=4)
-
-
-# --- WebSocket Connection Manager ---
+# --- THIS IS THE FIX ---
+# This is the complete and correct ConnectionManager class.
 class ConnectionManager:
     def __init__(self):
+        # Maps user ID (phone number) to their active WebSocket connection
         self.active_connections: Dict[str, WebSocket] = {}
 
     async def connect(self, websocket: WebSocket, user_id: str):
@@ -66,80 +41,79 @@ class ConnectionManager:
 manager = ConnectionManager()
 
 
-# WebSocket dependency
 def get_current_user_ws(token: str = Query(...)):
     return get_user_from_token(token)
 
 
-# --- Router Definition ---
-router = APIRouter()
-
-
 @router.get("/history")
-async def get_chat_history(current_user: str = Depends(get_current_user_http)):
-    """
-    HTTP endpoint to fetch all conversations involving the current user.
-    """
-    all_messages = load_messages()
+async def get_chat_history(
+        current_user: str = Depends(get_current_user_http),
+        session: AsyncSession = Depends(get_db_session)
+):
+    query = (
+        select(Message)
+        .where(or_(Message.sender_id == current_user, Message.recipient_id == current_user))
+        .order_by(Message.timestamp)
+    )
+    result = await session.execute(query)
+
     user_history = {}
-    for convo_key, messages in all_messages.items():
-        participants = convo_key.split("-")
-        if current_user in participants:
-            other_user = participants[0] if participants[1] == current_user else participants[1]
+    for msg in result.scalars().all():
+        other_user = msg.sender_id if msg.recipient_id == current_user else msg.recipient_id
+        if other_user not in user_history:
             user_history[other_user] = []
-            for msg in messages:
-                sender_type = "me" if msg["sender"] == current_user else "them"
-                user_history[other_user].append({
-                    "sender": sender_type,
-                    "text": msg["text"],
-                    "timestamp": msg.get("timestamp")
-                })
+
+        user_history[other_user].append({
+            "text": msg.text,
+            "sender": "me" if msg.sender_id == current_user else "them",
+            "timestamp": msg.timestamp.isoformat()
+        })
     return user_history
 
 
 @router.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket, user_id: str = Depends(get_current_user_ws)):
+async def websocket_endpoint(
+        websocket: WebSocket,
+        user_id: str = Depends(get_current_user_ws),
+        session: AsyncSession = Depends(get_db_session)
+):
     await manager.connect(websocket, user_id)
     try:
         while True:
             data = await websocket.receive_json()
-
             msg_type = data.get("type")
-            recipient_id = data.get("recipient_id")
 
             if msg_type == "chat_message":
+                recipient_id = data.get("recipient_id")
                 text = data.get("text")
                 if recipient_id and text:
-                    # --- THIS IS THE FIX ---
-                    # Generate a timestamp using the correct IST timezone
-                    timestamp = datetime.datetime.now(IST).isoformat()
+                    # Create timestamp with timezone
+                    timestamp_now = datetime.now(IST)
 
-                    # Save the message with the correct timestamp
-                    save_message(sender_id=user_id, recipient_id=recipient_id, text=text, timestamp=timestamp)
+                    new_message = Message(
+                        sender_id=user_id,
+                        recipient_id=recipient_id,
+                        text=text,
+                        timestamp=timestamp_now
+                    )
+                    session.add(new_message)
+                    await session.commit()
 
-                    # Create the message payload to send to the recipient
+                    # Send message to recipient and back to sender for confirmation and correct timestamp
                     message_to_send = {
                         "type": "chat_message",
                         "sender_id": user_id,
                         "text": text,
-                        "timestamp": timestamp  # Use the server's correct timestamp
+                        "timestamp": timestamp_now.isoformat()
                     }
-                    await manager.send_personal_message(
-                        json.dumps(message_to_send),
-                        str(recipient_id)
-                    )
+                    # Send to the other person
+                    await manager.send_personal_message(json.dumps(message_to_send), str(recipient_id))
+                    # Send back to the sender
+                    await manager.send_personal_message(json.dumps(message_to_send), str(user_id))
 
-                    # Also send the message back to the sender for timestamp consistency
-                    await manager.send_personal_message(
-                        json.dumps(message_to_send),
-                        user_id
-                    )
-
-                    print(f"Message from '{user_id}' to '{recipient_id}': {text}")
-
-            elif msg_type in ["webrtc_offer", "webrtc_answer", "webrtc_ice_candidate", "call_ended"]:
-                print(f"Relaying '{msg_type}' from '{user_id}' to '{recipient_id}'")
-                data["sender_id"] = user_id
+            elif msg_type in ["webrtc_offer", "webrtc_answer", "webrtc_ice_candidate", "call_ended", "call_declined"]:
+                recipient_id = data.get("recipient_id")
+                data["sender_id"] = user_id  # Add sender_id for context
                 await manager.send_personal_message(json.dumps(data), str(recipient_id))
 
     except Exception as e:

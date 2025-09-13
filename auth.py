@@ -1,18 +1,19 @@
 import jwt
 import random
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from typing import Dict
+from sqlalchemy.ext.asyncio import AsyncSession
 
-# --- THIS IS THE FIX ---
-# Import the function from the renamed user_management.py file
+# Import the function to add a new user and the database dependency
 from user_management import add_user_if_not_exists
+from database import get_db_session
 
 # --- Configuration ---
 SECRET_KEY = "your-super-secret-key-that-is-long-and-secure"
 ALGORITHM = "HS256"
 
-# --- In-memory OTP Storage ---
+# In-memory OTP Storage (remains the same)
 otp_storage: Dict[str, str] = {}
 
 
@@ -29,6 +30,7 @@ class OTPVerifyRequest(BaseModel):
 # --- JWT Token Creation ---
 def create_access_token(data: dict):
     to_encode = data.copy()
+    # No expiration for simplicity in this prototype
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
 
@@ -46,21 +48,23 @@ async def send_otp(request: OTPSendRequest):
 
 
 @router.post("/verify-otp")
-async def verify_otp(request: OTPVerifyRequest):
+async def verify_otp(
+    request: OTPVerifyRequest,
+    session: AsyncSession = Depends(get_db_session) # Get a database session
+):
     stored_otp = otp_storage.get(request.mobile)
 
-    if not stored_otp:
-        raise HTTPException(
-            status_code=400, detail="OTP not requested or has expired."
-        )
+    if not stored_otp or request.otp != stored_otp:
+        raise HTTPException(status_code=400, detail="Invalid OTP")
 
-    if request.otp == stored_otp:
+    # If OTP is correct, clear it from storage
+    if request.mobile in otp_storage:
         del otp_storage[request.mobile]
 
-        # This now correctly calls the function from the renamed file
-        add_user_if_not_exists(request.mobile)
+    # --- THIS IS THE KEY UPDATE ---
+    # After successful verification, add the user to our database.
+    # We pass the database session to this function.
+    await add_user_if_not_exists(request.mobile, session)
 
-        access_token = create_access_token(data={"sub": request.mobile})
-        return {"access_token": access_token, "token_type": "bearer"}
-    else:
-        raise HTTPException(status_code=400, detail="Invalid OTP")
+    access_token = create_access_token(data={"sub": request.mobile})
+    return {"access_token": access_token, "token_type": "bearer"}

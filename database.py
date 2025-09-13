@@ -1,33 +1,30 @@
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
+from sqlalchemy.orm import sessionmaker
 import os
 from dotenv import load_dotenv
-from pymongo import MongoClient
 
-# Show current working directory
-print(f"📂 Current working directory: {os.getcwd()}")
+# This line reads the secrets from your .env file
+load_dotenv()
 
-# Force-load the .env file from the same directory as database.py
-env_path = os.path.join(os.path.dirname(__file__), '.env')
-print(f"🔍 Trying to load .env from: {env_path}")
+# This correctly gets the value of the variable named "DATABASE_URL" from your .env file.
+DATABASE_URL = os.getenv("DATABASE_URL")
 
-load_dotenv(dotenv_path=env_path)
+if not DATABASE_URL:
+    raise ValueError("FATAL ERROR: DATABASE_URL not found in .env file. Please check your setup.")
 
-# Check values
-print(f"📜 MONGO_URI from .env: {os.getenv('MONGO_URI')}")
-print(f"📜 DB_NAME from .env: {os.getenv('DB_NAME')}")
+# Make sure to use the async version of the driver
+async_engine = create_async_engine(DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://"))
 
-# Now assign
-MONGO_URI = os.getenv("MONGO_URI")
-DB_NAME = os.getenv("DB_NAME")
+# Create a configured "AsyncSession" class
+AsyncSessionLocal = sessionmaker(
+    bind=async_engine,
+    class_=AsyncSession,
+    expire_on_commit=False,
+    autocommit=False,
+    autoflush=False,
+)
 
-if not MONGO_URI:
-    raise ValueError("MONGO_URI is not set in .env file")
-if not DB_NAME:
-    raise ValueError("DB_NAME is not set in .env file")
-
-client = MongoClient(MONGO_URI)
-db = client[DB_NAME]
-
-print(f"✅ Connected to database: {DB_NAME}")
-
-def get_collection(name: str):
-    return db[name]
+# Dependency to get a database session
+async def get_db_session():
+    async with AsyncSessionLocal() as session:
+        yield session
