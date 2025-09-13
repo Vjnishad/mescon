@@ -1,9 +1,9 @@
 document.addEventListener('DOMContentLoaded', () => {
 
     // --- HOST CONFIGURATION ---
-    // IMPORTANT: Replace this with your public ngrok URL
-    // Make sure to use the part WITHOUT "https://", like "unique-string.ngrok-free.app"
-   const HOST = '09dbc747cb8f.ngrok-free.app';
+    // --- HOST CONFIGURATION ---
+// This is the final, public address of your live server.
+const HOST = 'mescon.onrender.com'; // <-- PASTE YOUR RENDER ADDRESS HERE
 
     // --- DOM ELEMENT REFERENCES --- //
     const body = document.body;
