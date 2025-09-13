@@ -1,15 +1,40 @@
 document.addEventListener('DOMContentLoaded', () => {
 
-    // --- HOST CONFIGURATION ---
-    // --- HOST CONFIGURATION ---
-// This is the final, public address of your live server.
-// This must be the correct value in the file you save
-const HOST = 'mescon.onrender.com';
+    // --- HOST CONFIGURATION (AUTOMATIC) ---
+    // This code automatically detects if the app is running locally or on the live server.
+    // You no longer need to change this manually.
+    let HOST;
+    let API_PROTOCOL;
+    let WS_PROTOCOL;
+
+    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+        // We are on the local development machine
+        HOST = 'localhost:8000';
+        API_PROTOCOL = 'http:';
+        WS_PROTOCOL = 'ws:';
+    } else {
+        // We are on the live, deployed server (Render)
+        HOST = window.location.hostname; // e.g., "mescon.onrender.com"
+        API_PROTOCOL = 'https:';
+        WS_PROTOCOL = 'wss:';
+    }
+
+    const API_BASE_URL = `${API_PROTOCOL}//${HOST}`;
+    const WS_BASE_URL = `${WS_PROTOCOL}//${HOST}`;
 
 
     // --- DOM ELEMENT REFERENCES --- //
     const body = document.body;
     const loginSection = document.getElementById('login-section');
+    // ... (The rest of your JavaScript code remains exactly the same) ...
+    // All fetch() and WebSocket() calls below will now use the new base URLs.
+
+    // Example of an updated fetch call:
+    // response = await fetch(`${API_BASE_URL}/auth/send-otp`, { ... });
+
+    // Example of an updated WebSocket connection:
+    // websocket = new WebSocket(`${WS_BASE_URL}/chat/ws?token=${token}`);
+
     const verifySection = document.getElementById('verify-section');
     const chatSection = document.getElementById('chat-section');
     const sendOtpForm = document.getElementById('send-otp-form');
@@ -45,6 +70,7 @@ const HOST = 'mescon.onrender.com';
     // Call Elements
     const callScreen = document.getElementById('call-screen');
     const callDragHandle = document.getElementById('call-drag-handle');
+    const callWindowTitle = document.getElementById('call-window-title');
     const videoCallContainer = document.getElementById('video-call-container');
     const voiceCallContainer = document.getElementById('voice-call-container');
     const localVideo = document.getElementById('local-video');
@@ -85,7 +111,7 @@ const HOST = 'mescon.onrender.com';
         event.preventDefault();
         const mobile = mobileInput.value;
         try {
-            const response = await fetch(`https://${HOST}/auth/send-otp`, {
+            const response = await fetch(`${API_BASE_URL}/auth/send-otp`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ mobile: mobile })
@@ -107,7 +133,7 @@ const HOST = 'mescon.onrender.com';
         const mobile = mobileForVerifySpan.textContent;
         const otp = otpInput.value;
         try {
-            const response = await fetch(`https://${HOST}/auth/verify-otp`, {
+            const response = await fetch(`${API_BASE_URL}/auth/verify-otp`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ mobile: mobile, otp: otp })
@@ -139,7 +165,7 @@ const HOST = 'mescon.onrender.com';
             showNotification('Authentication token not found. Please log in again.', true);
             return;
         }
-        websocket = new WebSocket(`wss://${HOST}/chat/ws?token=${token}`);
+        websocket = new WebSocket(`${WS_BASE_URL}/chat/ws?token=${token}`);
         websocket.onopen = () => {
             console.log('WebSocket connection established.');
             displaySystemMessage('You are now connected.');
@@ -303,7 +329,7 @@ const HOST = 'mescon.onrender.com';
     async function openProfileModal() {
         const token = localStorage.getItem('access_token');
         try {
-            const response = await fetch(`https://${HOST}/api/profile`, {
+            const response = await fetch(`${API_BASE_URL}/api/profile`, {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
             if (!response.ok) throw new Error('Failed to fetch profile.');
@@ -324,7 +350,7 @@ const HOST = 'mescon.onrender.com';
         const avatar = profileAvatarInput.value;
         const token = localStorage.getItem('access_token');
         try {
-            const response = await fetch(`https://${HOST}/api/profile`, {
+            const response = await fetch(`${API_BASE_URL}/api/profile`, {
                 method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json',
@@ -348,7 +374,7 @@ const HOST = 'mescon.onrender.com';
         const number = contactNumberInput.value;
         const name = contactNameInput.value;
         const token = localStorage.getItem('access_token');
-        const url = isEditingContact ? `https://${HOST}/api/contacts/${number}` : `https://${HOST}/api/contacts`;
+        const url = isEditingContact ? `${API_BASE_URL}/api/contacts/${number}` : `${API_BASE_URL}/api/contacts`;
         const method = isEditingContact ? 'PUT' : 'POST';
 
         try {
@@ -380,7 +406,7 @@ const HOST = 'mescon.onrender.com';
         if (!activeChatId || !confirm(`Are you sure you want to delete this contact?`)) return;
         const token = localStorage.getItem('access_token');
         try {
-            const response = await fetch(`https://${HOST}/api/contacts/${activeChatId}`, {
+            const response = await fetch(`${API_BASE_URL}/api/contacts/${activeChatId}`, {
                 method: 'DELETE',
                 headers: { 'Authorization': `Bearer ${token}` }
             });
@@ -740,20 +766,20 @@ const HOST = 'mescon.onrender.com';
         const token = localStorage.getItem('access_token');
         if (!token) return;
         try {
-            const usersResponse = await fetch(`https://${HOST}/api/users`, {
+            const usersResponse = await fetch(`${API_BASE_URL}/api/users`, {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
             if (!usersResponse.ok) throw new Error('Failed to fetch user list.');
             contacts = await usersResponse.json();
 
-            const profileResponse = await fetch(`https://${HOST}/api/profile`, {
+            const profileResponse = await fetch(`${API_BASE_URL}/api/profile`, {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
              if (!profileResponse.ok) throw new Error('Failed to fetch profile.');
             const profile = await profileResponse.json();
             myAvatarImg.src = profile.avatar;
 
-            const historyResponse = await fetch(`https://${HOST}/chat/history`, {
+            const historyResponse = await fetch(`${API_BASE_URL}/chat/history`, {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
             if (!historyResponse.ok) throw new Error('Failed to fetch chat history.');
@@ -772,4 +798,3 @@ const HOST = 'mescon.onrender.com';
         }
     }
 });
-
