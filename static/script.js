@@ -3,7 +3,8 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- HOST CONFIGURATION ---
     // --- HOST CONFIGURATION ---
 // This is the final, public address of your live server.
-const HOST = 'mescon.onrender.com'; // <-- PASTE YOUR RENDER ADDRESS HERE
+const HOST = 'https://mescon.onrender.com'; // HTTPS is important
+
 
     // --- DOM ELEMENT REFERENCES --- //
     const body = document.body;
