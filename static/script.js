@@ -1,26 +1,26 @@
 document.addEventListener('DOMContentLoaded', () => {
 
-    // --- HOST CONFIGURATION (AUTOMATIC) ---
-    // This code automatically detects if the app is running locally or on the live server.
-    // You no longer need to change this manually.
-    let HOST;
-    let API_PROTOCOL;
-    let WS_PROTOCOL;
+// --- HOST CONFIGURATION (AUTOMATIC) ---
+// This code automatically detects if the app is running locally or on the live server.
+// You no longer need to change this manually.
+let HOST;
+let API_PROTOCOL;
+let WS_PROTOCOL;
 
-    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-        // We are on the local development machine
-        HOST = 'localhost:8000';
-        API_PROTOCOL = 'http:';
-        WS_PROTOCOL = 'ws:';
-    } else {
-        // We are on the live, deployed server (Render)
-        HOST = window.location.hostname; // e.g., "mescon.onrender.com"
-        API_PROTOCOL = 'https:';
-        WS_PROTOCOL = 'wss:';
-    }
+if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+    // We are on the local development machine
+    HOST = 'localhost:8000';
+    API_PROTOCOL = 'http:';
+    WS_PROTOCOL = 'ws:';
+} else {
+    // We are on the live, deployed server (Render)
+    HOST = 'mescon.onrender.com';
+    API_PROTOCOL = 'https:';
+    WS_PROTOCOL = 'wss:';
+}
 
-    const API_BASE_URL = `${API_PROTOCOL}//${HOST}`;
-    const WS_BASE_URL = `${WS_PROTOCOL}//${HOST}`;
+const API_BASE_URL = `${API_PROTOCOL}//${HOST}`;
+const WS_BASE_URL = `${WS_PROTOCOL}//${HOST}`;
 
 
     // --- DOM ELEMENT REFERENCES --- //
