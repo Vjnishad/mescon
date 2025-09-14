@@ -1,4 +1,3 @@
-
 document.addEventListener('DOMContentLoaded', () => {
 
     // --- HOST CONFIGURATION (AUTOMATIC) ---
@@ -27,15 +26,6 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- DOM ELEMENT REFERENCES --- //
     const body = document.body;
     const loginSection = document.getElementById('login-section');
-    // ... (The rest of your JavaScript code remains exactly the same) ...
-    // All fetch() and WebSocket() calls below will now use the new base URLs.
-
-    // Example of an updated fetch call:
-    // response = await fetch(`${API_BASE_URL}/auth/send-otp`, { ... });
-
-    // Example of an updated WebSocket connection:
-    // websocket = new WebSocket(`${WS_BASE_URL}/chat/ws?token=${token}`);
-
     const verifySection = document.getElementById('verify-section');
     const chatSection = document.getElementById('chat-section');
     const sendOtpForm = document.getElementById('send-otp-form');
