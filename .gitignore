@@ -1,0 +1,19 @@
+# Python temporary files
+__pycache__/
+*.pyc
+
+# Virtual Environment folder
+# If your venv folder has a different name, change it here.
+/nayavijay/
+
+# IDE configuration folder
+.idea/
+
+# User data and sensitive files (DO NOT UPLOAD)
+*.json
+user_contacts/
+.env
+
+# Personal Documents
+*.docx
+*.pdf
