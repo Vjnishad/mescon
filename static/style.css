@@ -48,3 +48,28 @@ body.chat-active {
     height: 100%;
     object-fit: cover;
     transform: scaleX(-1); /* Mirror view */
+
+/* For tablets and smaller screens */
+@media (max-width: 768px) {
+  .container {
+    padding: 10px;
+    flex-direction: column;
+  }
+
+  .chat-box {
+    width: 100%;
+    font-size: 14px;
+  }
+}
+
+/* For phones */
+@media (max-width: 480px) {
+  h1 {
+    font-size: 18px;
+  }
+
+  button {
+    padding: 8px 12px;
+    font-size: 14px;
+  }
+}
