@@ -789,3 +789,21 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 });
+fetch('https://api.example.com/data')
+  .then(response => {
+    // First, check if the response status is successful (e.g., 200 OK)
+    if (!response.ok) {
+      // If not, the server had an error.
+      // Throw an error to be caught by the .catch() block.
+      throw new Error(`HTTP error! Status: ${response.status}`);
+    }
+    // Only if the response is OK do we try to parse it as JSON.
+    return response.json();
+  })
+  .then(data => {
+    console.log(data); // Success! Handle the JSON data.
+  })
+  .catch(error => {
+    // This will catch both network failures and the server error thrown above.
+    console.error('There was a problem with the fetch operation:', error);
+  });
